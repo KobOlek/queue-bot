@@ -1,0 +1,4 @@
+TOKEN = "BOT_TOKEN"
+admin_ids = [123456789]
+
+DB_NAME = "DB_NAME"
