@@ -44,11 +44,13 @@ class Database:
                         FOREIGN KEY (user_id) REFERENCES Users (user_id) ON DELETE CASCADE""")
 
         self.__create_table("Archive", """id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        schedule_id INTEGER NOT NULL,
-                        user_id INTEGER NOT NULL,
+                        schedule_id INTEGER,
+                        user_id INTEGER,
                         lab_number INTEGER NOT NULL,
                         position INTEGER,
-                        archived_at DATETIME DEFAULT CURRENT_TIMESTAMP""")
+                        archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (schedule_id) REFERENCES Schedules (id) ON DELETE SET NULL,
+                        FOREIGN KEY (user_id) REFERENCES Users (user_id) ON DELETE SET NULL""")
 
         self.__create_table("Settings", """registration_enabled INTEGER DEFAULT 1""")
 
