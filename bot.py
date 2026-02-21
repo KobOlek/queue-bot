@@ -8,6 +8,11 @@ async def start(update: Update, context: CallbackContext):
     pass
 
 def main() -> None:
+    # Creating database
+    with Database(DB_NAME) as db:
+        db.create_database()
+        db.seed_initial_data()
+
     # Here bot runs
     app = Application.builder().token(TOKEN).build()
 
