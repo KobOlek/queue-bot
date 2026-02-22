@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+from schedule_parser import parse_json
 
 class Database:
     def __init__(self, db_file):
@@ -104,36 +105,16 @@ class Database:
         return current_max + 1
 
     def seed_initial_data(self):
-        subgroup = 1
-        defense_dates = {
-            "OOP": ["20.02.26", "27.02.26", "06.03.26", "13.03.26", "20.03.26","27.03.26", "03.04.26",
-                    "10.04.26", "17.04.26","24.04.26", "01.05.26", "08.05.26", "15.05.26", "22.05.26"],
-            "ACOS": ["24.02.26", "03.03.26", "10.03.26", "17.03.26", "24.03.26", "31.03.26", "07.04.26",
-                     "14.04.26", "21.04.26", "28.04.26", "05.05.26", "12.05.26", "19.05.26"],
-            "Algorithms": ["24.02.26", "03.03.26", "10.03.26", "17.03.26", "24.03.26", "31.03.26", "07.04.26",
-                     "14.04.26", "21.04.26", "28.04.26", "05.05.26", "12.05.26", "19.05.26"]
-        }
-        self.insert_defense_dates(subgroup, defense_dates)
+        data = parse_json("schedules.json")
 
-        subgroup = 2
-        defense_dates = {
-            "OOP": ["20.02.26", "27.02.26", "06.03.26", "13.03.26", "20.03.26", "27.03.26", "03.04.26",
-                    "10.04.26", "17.04.26", "24.04.26", "01.05.26", "08.05.26", "15.05.26", "22.05.26"],
-            "ACOS": ["20.02.26", "27.02.26", "06.03.26", "13.03.26", "20.03.26", "27.03.26", "03.04.26",
-                    "10.04.26", "17.04.26", "24.04.26", "01.05.26", "08.05.26", "15.05.26", "22.05.26"],
-            "Algorithms": ["24.02.26", "03.03.26", "10.03.26", "17.03.26", "24.03.26", "31.03.26", "07.04.26",
-                           "14.04.26", "21.04.26", "28.04.26", "05.05.26", "12.05.26", "19.05.26"]
-        }
-        self.insert_defense_dates(subgroup, defense_dates)
+        for subject, subgroup, defense_date in data:
+            self.insert_defense_dates(subject, subgroup, defense_date)
 
-    def insert_defense_dates(self, subgroup: int, defense_dates: dict):
-        def format_date_for_db(date_str: str) -> str:
-            parsed_date = datetime.strptime(date_str, "%d.%m.%y")
-            return parsed_date.strftime("%Y-%m-%d")
+    def insert_defense_dates(self, subject: str, subgroup: str, defense_date: str):
+        parsed_date = datetime.strptime(defense_date, "%d.%m.%y")
+        formatted_date = parsed_date.strftime("%Y-%m-%d")
 
         query = """INSERT OR IGNORE INTO Schedules (subject, subgroup, defense_date) 
                VALUES (?, ?, ?)"""
 
-        for subject, dates in defense_dates.items():
-            for date in dates:
-                self.execute(query, (subject, str(subgroup), format_date_for_db(date)))
+        self.execute(query, (subject, subgroup, formatted_date))
