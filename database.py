@@ -128,7 +128,7 @@ class Database:
 
         self.execute(query, (subject, subgroup, formatted_date))
 
-    def get_registration_status(self) -> bool:
+    def is_registration_enabled(self) -> bool:
         query = "SELECT registration_enabled FROM Settings"
         response = self.fetch(query)
         if not response:
@@ -144,3 +144,23 @@ class Database:
         query = """INSERT INTO Users (user_id, full_name) 
                         VALUES (?, ?)"""
         self.execute(query, (user_id, full_name,))
+
+    def get_user_ids(self) -> list[int]:
+        query = "SELECT user_id FROM Users"
+        query_result = self.fetch(query)
+        result = []
+        for v in query_result:
+            result.append(v[0])
+
+        return result
+
+    def toggle_registration(self) -> int:
+        if self.is_registration_enabled():
+            query = """UPDATE Settings SET registration_enabled = ?"""
+            self.execute(query, (0,))
+            return 0
+        else:
+            query = """UPDATE Settings SET registration_enabled = ?"""
+            self.execute(query, (1,))
+            return 1
+        return -1
