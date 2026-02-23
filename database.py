@@ -4,6 +4,8 @@ from datetime import datetime
 from schedule_parser import parse_json
 from config import admins
 
+from exception import DatabaseException
+
 class Database:
     def __init__(self, db_file):
         self.conn = sqlite3.connect(db_file, check_same_thread=False)
@@ -70,6 +72,7 @@ class Database:
         except sqlite3.Error as e:
             print(f"Query failed: {e}")
             self.conn.rollback()
+            raise DatabaseException(f"Query failed: {e}")
 
     def fetch(self, query: str, parameters: tuple = ()) -> list[tuple]:
         """Returns a list of query result"""
@@ -163,4 +166,3 @@ class Database:
             query = """UPDATE Settings SET registration_enabled = ?"""
             self.execute(query, (1,))
             return 1
-        return -1
