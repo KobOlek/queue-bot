@@ -27,7 +27,6 @@ WAITING_FOR_NAME = 1
 # User and admin menus
 USER_COMMANDS = [
     BotCommand("start", "Почати"),
-    BotCommand("change_name", "Змінити ім'я"),
     BotCommand("show_table", "Показати чергу"),
     BotCommand("get_in_queue", "Увійти в чергу"),
     BotCommand("leave_the_queue", "Покинути чергу")
@@ -135,7 +134,7 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
             with Database(DB_NAME) as db:
                 db.register_user(target_user_id, full_name)
         except DatabaseException:
-            await update.message.reply_text("Помилка з додаванням користувача")
+            await query.edit_message_text("❌ Помилка бази даних при додаванні користувача.", reply_markup=None)
             return
 
         await context.bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeChat(chat_id=target_user_id))
@@ -150,10 +149,7 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
     if target_user_id in context.bot_data:
         del context.bot_data[target_user_id]
             
-
-async def change_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
-
+        
 async def show_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
@@ -257,7 +253,6 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(admin_registration_decision, pattern="^(approve|reject)_"))
 
 
-    app.add_handler(CommandHandler("change_name", change_name, filters=registered_filter))
     app.add_handler(CommandHandler("show_table", show_table, filters=registered_filter))
     app.add_handler(CommandHandler("get_in_queue", get_in_queue, filters=registered_filter))
     app.add_handler(CommandHandler("leave_the_queue", leave_the_queue, filters=registered_filter))
