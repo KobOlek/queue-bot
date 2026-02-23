@@ -1,6 +1,8 @@
 import sqlite3
+
 from datetime import datetime
 from schedule_parser import parse_json
+from config import admins
 
 class Database:
     def __init__(self, db_file):
@@ -109,6 +111,9 @@ class Database:
 
         for subject, subgroup, defense_date in data:
             self.insert_defense_dates(subject, subgroup, defense_date)
+
+        for name, user_id in admins.items():
+            self.execute(f"INSERT INTO Users (user_id, full_name) VALUES (?, ?)", (user_id, name,))
 
     def insert_defense_dates(self, subject: str, subgroup: str, defense_date: str):
         parsed_date = datetime.strptime(defense_date, "%d.%m.%y")
