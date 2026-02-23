@@ -71,7 +71,7 @@ class Database:
             print(f"Query failed: {e}")
             self.conn.rollback()
 
-    def fetch(self, query: str, parameters: tuple = ()):
+    def fetch(self, query: str, parameters: tuple = ()) -> list[tuple]:
         """Returns a list of query result"""
         self.cursor.execute(query, parameters)
         return self.cursor.fetchall()
@@ -127,3 +127,20 @@ class Database:
                VALUES (?, ?, ?)"""
 
         self.execute(query, (subject, subgroup, formatted_date))
+
+    def get_registration_status(self) -> bool:
+        query = "SELECT registration_enabled FROM Settings"
+        response = self.fetch(query)
+        if not response:
+            return True
+        return response[0][0] == 1
+    
+    def is_user_registered(self, user_id: int) -> bool:
+        query = "SELECT 1 FROM Users WHERE user_id = ?"
+        result = self.fetch(query, (user_id,))
+        return bool(result)
+    
+    def register_user(self, user_id, full_name):
+        query = """INSERT INTO Users (user_id, full_name) 
+                        VALUES (?, ?)"""
+        self.execute(query, (user_id, full_name,))
