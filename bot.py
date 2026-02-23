@@ -4,6 +4,8 @@ from telegram.ext.filters import MessageFilter
 
 from config import *
 from database import Database
+from exception import DatabaseException
+
 
 class IsRegisteredUserFilter(MessageFilter):
     """ Custom filter: passes messages ONLY if the user is in the database. """
@@ -12,9 +14,12 @@ class IsRegisteredUserFilter(MessageFilter):
             return False
             
         user_id = message.from_user.id
-        
-        with Database(DB_NAME) as db:
-            return db.is_user_registered(user_id)
+
+        try:
+            with Database(DB_NAME) as db:
+                return db.is_user_registered(user_id)
+        except DatabaseException:
+            return False
 
 # State for ConversationHandler
 WAITING_FOR_NAME = 1
@@ -45,20 +50,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=user_id))
         await update.message.reply_text("Привіт адміне!")
         return ConversationHandler.END
-    
-    # Check if registration is enabled
-    with Database(DB_NAME) as db:
-        is_registration_open = db.is_registration_enabled()
-        if not is_registration_open:
-            await update.message.reply_text("Наразі реєстрація нових користувачів закрита.")
-            return ConversationHandler.END
-        
-        # Check if user is not already registred
-        is_registered = db.is_user_registered(user_id)
-        if is_registered:
-            await update.message.reply_text("Ти вже зареєстрований! Обирай що робимо далі!")
-            return ConversationHandler.END
-     
+
+    try:
+        with Database(DB_NAME) as db:
+            # Check if registration is enabled
+            is_registration_open = db.is_registration_enabled()
+            if not is_registration_open:
+                await update.message.reply_text("Наразі реєстрація нових користувачів закрита.")
+                return ConversationHandler.END
+
+            # Check if user is not already registred
+            is_registered = db.is_user_registered(user_id)
+            if is_registered:
+                await update.message.reply_text("Ти вже зареєстрований! Обирай що робимо далі!")
+                return ConversationHandler.END
+    except DatabaseException:
+        await update.message.reply_text("Помилка реєстрації.")
+        return ConversationHandler.END
+
     if user_id in context.bot_data:
         await update.message.reply_text("Твоя заявка вже розглядається адміністратором. Будь ласка, зачекай.")
         return ConversationHandler.END
@@ -122,9 +131,13 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
     if action == "approve":
         user_info = context.bot_data.get(target_user_id)
         full_name = user_info["name"] if user_info else "Невідомий"
-        with Database(DB_NAME) as db:
-            db.register_user(target_user_id, full_name)
-        
+        try:
+            with Database(DB_NAME) as db:
+                db.register_user(target_user_id, full_name)
+        except DatabaseException:
+            await update.message.reply_text("Помилка з додаванням користувача")
+            return
+
         await context.bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeChat(chat_id=target_user_id))
         
         await context.bot.send_message(chat_id=target_user_id, text="Твою заявку схвалено! Меню оновлено, можеш користуватися ботом.")
@@ -135,7 +148,7 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
         await query.edit_message_text(f"❌ Користувача {target_user_id} відхилено.", reply_markup=None)
 
     if target_user_id in context.bot_data:
-            del context.bot_data[target_user_id]
+        del context.bot_data[target_user_id]
             
 
 async def change_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,8 +187,12 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success_count = 0
     error_count = 0
 
-    with Database(DB_NAME) as db:
-        user_ids = db.get_user_ids()
+    try:
+        with Database(DB_NAME) as db:
+            user_ids = db.get_user_ids()
+    except DatabaseException:
+        await update.message.reply_text("Помилка з отриманням ID користувачів.")
+        return
 
     if not user_ids:
         await update.message.reply_text("У базі немає користувачів для розсилки.")
@@ -196,19 +213,19 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def toggle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ""
-    with Database(DB_NAME) as db:
-        result = db.toggle_registration()
-        match result:
-            case 0:
-                text = "Реєстрацію вимкнено!"
-            case 1:
-                text = "Реєстрацію увімкнено!"
-            case _:
-                text = "Помилка з базою даних"
+    try:
+        with Database(DB_NAME) as db:
+            result = db.toggle_registration()
+            match result:
+                case 0:
+                    text = "Реєстрацію вимкнено!"
+                case 1:
+                    text = "Реєстрацію увімкнено!"
 
+    except DatabaseException as e:
+        text = "Помилка з базою даних"
 
     await update.message.reply_text(text)
-
 
 def main() -> None:
     # Creating database
