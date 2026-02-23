@@ -48,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Check if registration is enabled
     with Database(DB_NAME) as db:
-        is_registration_open = db.get_registration_status()
+        is_registration_open = db.is_registration_enabled()
         if not is_registration_open:
             await update.message.reply_text("Наразі реєстрація нових користувачів закрита.")
             return ConversationHandler.END
@@ -163,10 +163,51 @@ async def reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    if not context.args:
+        await update.message.reply_text(
+            "Будь ласка, вкажіть текст для розсилки."
+        )
+        return
+
+    text = " ".join(context.args)
+
+    success_count = 0
+    error_count = 0
+
+    with Database(DB_NAME) as db:
+        user_ids = db.get_user_ids()
+
+    if not user_ids:
+        await update.message.reply_text("У базі немає користувачів для розсилки.")
+        return
+
+    for user_id in user_ids:
+        try:
+            await context.bot.send_message(chat_id=user_id, text=text)
+            success_count += 1
+        except Exception as e:
+            print(f"Помилка відправки користувачу {user_id}: {e}")
+            error_count += 1
+
+    await update.message.reply_text(
+        f"📢 Розсилку завершено!\n\n"
+        f"✅ Успішно надіслано: {success_count}\n"
+        f"❌ Помилок (заблокували бота тощо): {error_count}")
 
 async def toggle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    text = ""
+    with Database(DB_NAME) as db:
+        result = db.toggle_registration()
+        match result:
+            case 0:
+                text = "Реєстрацію вимкнено!"
+            case 1:
+                text = "Реєстрацію увімкнено!"
+            case _:
+                text = "Помилка з базою даних"
+
+
+    await update.message.reply_text(text)
 
 
 def main() -> None:
