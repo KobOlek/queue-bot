@@ -2,7 +2,7 @@ from telegram import Update, BotCommand, BotCommandScopeDefault, BotCommandScope
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 from telegram.ext.filters import MessageFilter
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 from config import *
 from database import Database
@@ -240,7 +240,7 @@ async def auto_archive_job(context: ContextTypes.DEFAULT_TYPE):
         
 async def check_tomorrows_schedules(context: ContextTypes.DEFAULT_TYPE):
     tomorrow = datetime.now() + timedelta(days=1)
-    formatted_tomorrow = tomorrow.strftime("%y%m%d")
+    formatted_tomorrow = tomorrow.strftime("%Y-%m-%d")
 
     try:
         with Database(DB_NAME) as db:
@@ -249,17 +249,18 @@ async def check_tomorrows_schedules(context: ContextTypes.DEFAULT_TYPE):
             if not schedule_ids:
                 return
 
+            user_ids = db.get_user_ids()
+
             for schedule_id in schedule_ids:
                 db.update_active_queues(schedule_id)
 
-            user_ids = db.get_user_ids()
-            subject, subgroup = db.get_subject_name_and_subgroup(schedule_id)
-            text = f"Черга відкрита для запису для предмету {subject} для підгрупи {subgroup} на завтра"
-            for user_id in user_ids:
-                try:
-                    await context.bot.send_message(chat_id=user_id, text=text)
-                except Exception as e:
-                    pass
+                subject, subgroup = db.get_subject_name_and_subgroup(schedule_id)
+                text = f"Черга відкрита для запису для предмету {subject} для підгрупи {subgroup} на завтра"
+                for user_id in user_ids:
+                    try:
+                        await context.bot.send_message(chat_id=user_id, text=text)
+                    except Exception as e:
+                        pass
 
     except DatabaseException as e:
         pass
@@ -278,7 +279,7 @@ def main() -> None:
         )
 
     # Schedule the daily job
-    time_to_run = datetime.time(hour=3, minute=0)
+    time_to_run = time(hour=3, minute=0)
 
     app.job_queue.run_daily(
         check_tomorrows_schedules,
@@ -287,7 +288,7 @@ def main() -> None:
     )
     
     app.job_queue.run_daily(
-        check_tomorrows_schedules,
+        auto_archive_job,
         time=time_to_run,
         name="auto_archive_job"
     )
