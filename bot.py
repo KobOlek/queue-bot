@@ -23,8 +23,11 @@ class IsRegisteredUserFilter(MessageFilter):
         except DatabaseException:
             return False
 
-# State for ConversationHandler
+# States for ConversationHandler
 WAITING_FOR_NAME = 1
+SELECTING_QUEUE = 2
+TYPING_LAB_NUMBER = 3
+SELECTING_POSITION = 4
 
 # User and admin menus
 USER_COMMANDS = [
@@ -156,7 +159,151 @@ async def show_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
 async def get_in_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    user_id = update.effective_user.id
+
+    active_queues = []
+    try:
+        with Database(DB_NAME) as db:
+            active_queues = db.get_current_active_queues()
+    except DatabaseException:
+        await update.message.reply_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not active_queues:
+        await update.message.reply_text("Зараз немає активних черг.")
+        return ConversationHandler.END
+
+    keyboard = []
+
+    for aq in active_queues:
+        # aq[0]=id, aq[1]=subject, aq[2]=subgroup, aq[3]=date
+        btn_text = f"{aq[1]} (Підгрупа: {aq[2]}) - {aq[3]}"
+        btn_data = f"get_in_{aq[0]}"
+        
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_queue")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.send_message(
+        chat_id=user_id, 
+        text=f"Доступні для запису черги:",
+        reply_markup=reply_markup
+    )
+
+    return SELECTING_QUEUE
+
+async def queue_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    schedule_id_str = query.data.replace("get_in_", "")
+    schedule_id = int(schedule_id_str)
+
+    context.user_data['selected_schedule_id'] = schedule_id
+
+    await query.edit_message_text(
+        "✍️ Напиши номер лабораторної роботи, яку будеш здавати (тільки цифру):", 
+        reply_markup=None
+    )
+    
+    return TYPING_LAB_NUMBER
+
+async def receive_lab_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lab_text = update.message.text
+
+    if not lab_text.isdigit():
+        await update.message.reply_text("Будь ласка, введи коректний номер (тільки цифру):")
+        return TYPING_LAB_NUMBER
+    
+    lab_number = int(lab_text)
+    schedule_id = context.user_data.get('selected_schedule_id')
+
+    try:
+        with Database(DB_NAME) as db:
+            if db.is_same_user_in_queue(user_id, schedule_id, lab_number):
+                await update.message.reply_text(f"⚠️ Ти вже стоїш у цій черзі з лабою №{lab_number}!")
+                del context.user_data['selected_schedule_id']
+                return ConversationHandler.END
+            
+            taken_positions = db.get_taken_positions(schedule_id)
+            
+    except DatabaseException:
+        await update.message.reply_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    context.user_data['lab_number'] = lab_number
+
+    MAX_POSITIONS = 25
+    keyboard = []
+    row = []
+    
+    for i in range(1, MAX_POSITIONS + 1):
+        if i in taken_positions:
+            row.append(InlineKeyboardButton("❌", callback_data="taken_pos"))
+        else:
+            row.append(InlineKeyboardButton(str(i), callback_data=f"pos_{i}"))
+            
+        if len(row) == 5:
+            keyboard.append(row)
+            row = []
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_queue")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Обери вільне місце в черзі:", 
+        reply_markup=reply_markup
+    )
+    return SELECTING_POSITION
+
+
+async def position_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    
+    if query.data == "taken_pos":
+        await query.answer("Це місце вже зайняте! Обери інше.", show_alert=True)
+        return SELECTING_POSITION
+        
+    if query.data == "cancel_queue":
+        await query.answer()
+        await query.edit_message_text("Запис у чергу скасовано.")
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    await query.answer()
+
+    position = int(query.data.replace("pos_", ""))
+    
+    schedule_id = context.user_data.get('selected_schedule_id')
+    lab_number = context.user_data.get('lab_number')
+    user_id = update.effective_user.id
+
+    try:
+        with Database(DB_NAME) as db:
+            if db.is_position_taken(schedule_id, position):
+                await query.edit_message_text("Ой! Хтось встиг зайняти це місце швидше за тебе. Спробуй /get_in_queue ще раз.")
+                context.user_data.clear()
+                return ConversationHandler.END
+
+            db.add_user_to_queue(schedule_id, user_id, lab_number, position)
+            
+    except DatabaseException:
+        await query.edit_message_text("❌ Помилка бази даних при записі.")
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    context.user_data.clear()
+
+    await query.edit_message_text(f"✅ Успіх! Тебе записано в чергу.\nТвоя позиція: **{position}**", parse_mode="Markdown")
+    return ConversationHandler.END
+
+async def cancel_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'selected_schedule_id' in context.user_data:
+        del context.user_data['selected_schedule_id']
+    await update.message.reply_text("Запис у чергу скасовано.")
+    return ConversationHandler.END
 
 async def leave_the_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
@@ -242,28 +389,37 @@ async def check_tomorrows_schedules(context: ContextTypes.DEFAULT_TYPE):
     tomorrow = datetime.now() + timedelta(days=1)
     formatted_tomorrow = tomorrow.strftime("%Y-%m-%d")
 
+    messages_to_send = []
+    user_ids = []
+
     try:
         with Database(DB_NAME) as db:
-            schedule_ids = db.get_tomorrows_schedules(formatted_tomorrow)
+            schedule_ids = db.get_schedules_for_date(formatted_tomorrow)
 
             if not schedule_ids:
-                return
+                return 
 
             user_ids = db.get_user_ids()
 
             for schedule_id in schedule_ids:
                 db.update_active_queues(schedule_id)
-
                 subject, subgroup = db.get_subject_name_and_subgroup(schedule_id)
-                text = f"Черга відкрита для запису для предмету {subject} для підгрупи {subgroup} на завтра"
-                for user_id in user_ids:
-                    try:
-                        await context.bot.send_message(chat_id=user_id, text=text)
-                    except Exception as e:
-                        pass
+                
+                text = f"📢 Відкрито чергу на завтра:\n📚 Предмет: {subject}\n👥 Підгрупа: {subgroup}"
+                messages_to_send.append(text)
 
     except DatabaseException as e:
-        pass
+        print(f"Помилка БД при перевірці черг на завтра: {e}")
+        return
+
+    if user_ids and messages_to_send:
+        final_text = "\n\n".join(messages_to_send)
+        
+        for user_id in user_ids:
+            try:
+                await context.bot.send_message(chat_id=user_id, text=final_text)
+            except Exception:
+                pass
 
 def main() -> None:
     # Creating database
@@ -312,7 +468,20 @@ def main() -> None:
 
 
     app.add_handler(CommandHandler("show_table", show_table, filters=registered_filter))
-    app.add_handler(CommandHandler("get_in_queue", get_in_queue, filters=registered_filter))
+    queue_conv = ConversationHandler(
+        entry_points=[CommandHandler("get_in_queue", get_in_queue, filters=registered_filter)],
+        states={
+            SELECTING_QUEUE: [
+                CallbackQueryHandler(queue_selected, pattern="^get_in_"),
+                CallbackQueryHandler(position_selected, pattern="^cancel_queue$")
+            ],
+            TYPING_LAB_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_lab_number)],
+            SELECTING_POSITION: [CallbackQueryHandler(position_selected, pattern="^(pos_|taken_pos|cancel_queue)")]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_queue)],
+        allow_reentry=True
+    )
+    app.add_handler(queue_conv)
     app.add_handler(CommandHandler("leave_the_queue", leave_the_queue, filters=registered_filter))
 
     # Admin-only commands
