@@ -236,10 +236,35 @@ class Database:
                 query = """INSERT INTO Active_Queues (schedule_id, is_open) VALUES (?, ?)"""
                 self.execute(query, (schedule_id, 1))
 
-    def get_subject_name_and_subgroup(self, schedule_id: int) -> tuple[str, int]:
-        subject_query = """SELECT subject FROM Schedules WHERE schedule_id = ?"""
-        subject_res = self.fetch(subject_query, (schedule_id,))
+    def get_subject_name_and_subgroup(self, schedule_id: int) -> tuple[str, str]:
+        query = """SELECT subject, subgroup FROM Schedules WHERE id = ?"""
+        res = self.fetch(query, (schedule_id,))
+        return res[0][0], res[0][1]
 
-        subgroup_query = """SELECT subgroup FROM Schedules WHERE schedule_id = ?"""
-        subgroup_res = self.fetch(subgroup_query, (schedule_id,))
-        return subject_res[0][0], subgroup_res[0][0]
+    def get_current_active_queues(self) -> list[tuple]:
+        query = """
+            SELECT s.id, s.subject, s.subgroup, s.defense_date
+            FROM Schedules s
+            JOIN Active_Queues aq ON s.id = aq.schedule_id
+            WHERE aq.is_open = 1
+        """
+        return self.fetch(query)
+    
+    def is_same_user_in_queue(self, user_id, schedule_id, lab_number) -> list[tuple]: # user with same lab_number in the exact queue
+        query = """
+            SELECT COUNT(*) 
+            FROM Queues 
+            WHERE user_id = ? AND schedule_id = ? AND lab_number = ? 
+        """
+        result = self.fetch(query, (user_id, schedule_id, lab_number))
+        return result[0][0] > 0
+    
+    def get_taken_positions(self, schedule_id: int) -> list[int]:
+        query = "SELECT position FROM Queues WHERE schedule_id = ?"
+        result = self.fetch(query, (schedule_id,))
+        return [row[0] for row in result]
+
+    def is_position_taken(self, schedule_id: int, position: int) -> bool:
+        query = "SELECT 1 FROM Queues WHERE schedule_id = ? AND position = ?"
+        result = self.fetch(query, (schedule_id, position))
+        return bool(result)
