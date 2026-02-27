@@ -225,6 +225,19 @@ async def toggle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text(text)
 
+async def auto_archive_job(context: ContextTypes.DEFAULT_TYPE):
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    try:
+        with Database(DB_NAME) as db:
+            archived_count = db.archive_past_queues(yesterday)
+            
+            if archived_count > 0:
+                print(f"🔄 Автоматично архівовано {archived_count} черг за {yesterday}.")
+                
+    except DatabaseException as e:
+        print(f"❌ Помилка авто-архівування: {e}")
+        
 async def check_tomorrows_schedules(context: ContextTypes.DEFAULT_TYPE):
     tomorrow = datetime.now() + timedelta(days=1)
     formatted_tomorrow = tomorrow.strftime("%y%m%d")
@@ -272,6 +285,13 @@ def main() -> None:
         time=time_to_run,
         name="daily_schedule_check"
     )
+    
+    app.job_queue.run_daily(
+        check_tomorrows_schedules,
+        time=time_to_run,
+        name="auto_archive_job"
+    )
+    
 
     # Filter for admins
     admin_filter = filters.User(user_id=admin_ids)  

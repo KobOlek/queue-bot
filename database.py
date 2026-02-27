@@ -166,6 +166,54 @@ class Database:
             query = """UPDATE Settings SET registration_enabled = ?"""
             self.execute(query, (1,))
             return 1
+        
+    def archive_past_queues(self, target_date: str) -> int:
+        """
+        Finds open queues for the specified date, moves them to Archive, 
+        deletes them from Queues, and closes them (is_open = 0).
+        """
+        # Reading: Looking for schedules from yesterday that are still open
+        query_find = """
+            SELECT s.id 
+            FROM Schedules s
+            JOIN Active_Queues aq ON s.id = aq.schedule_id
+            WHERE s.defense_date = ? AND aq.is_open = 1
+        """
+        schedules_to_archive = self.fetch(query_find, (target_date,))
+        
+        if not schedules_to_archive:
+            return 0
+            
+        count = 0
+        for row in schedules_to_archive:
+            schedule_id = row[0]
+            try:
+                # Data Migration: Copy to archive
+                query_migrate = """
+                    INSERT INTO Archive (schedule_id, user_id, lab_number, position)
+                    SELECT schedule_id, user_id, lab_number, position
+                    FROM Queues
+                    WHERE schedule_id = ?
+                """
+                self.cursor.execute(query_migrate, (schedule_id,))
+                
+                # Cleaning: Delete from the worksheet
+                query_clean = "DELETE FROM Queues WHERE schedule_id = ?"
+                self.cursor.execute(query_clean, (schedule_id,))
+                
+                # Closing: Change the status to closed
+                query_close = "UPDATE Active_Queues SET is_open = 0 WHERE schedule_id = ?"
+                self.cursor.execute(query_close, (schedule_id,))
+                
+                # Commit a transaction for a specific queue
+                self.conn.commit()
+                count += 1
+                
+            except sqlite3.Error as e:
+                self.conn.rollback() # We cancel changes if there was an error
+                raise DatabaseException(f"Помилка архівування черги {schedule_id}: {e}")
+                
+        return count
 
     def get_schedules_for_date(self, target_date: str) -> list[int]:
         """
