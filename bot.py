@@ -2,6 +2,8 @@ from telegram import Update, BotCommand, BotCommandScopeDefault, BotCommandScope
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 from telegram.ext.filters import MessageFilter
 
+from datetime import datetime, timedelta
+
 from config import *
 from database import Database
 from exception import DatabaseException
@@ -223,6 +225,32 @@ async def toggle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text(text)
 
+async def check_tomorrows_schedules(context: ContextTypes.DEFAULT_TYPE):
+    tomorrow = datetime.now() + timedelta(days=1)
+    formatted_tomorrow = tomorrow.strftime("%y%m%d")
+
+    try:
+        with Database(DB_NAME) as db:
+            schedule_ids = db.get_tomorrows_schedules(formatted_tomorrow)
+
+            if not schedule_ids:
+                return
+
+            for schedule_id in schedule_ids:
+                db.update_active_queues(schedule_id)
+
+            user_ids = db.get_user_ids()
+            subject, subgroup = db.get_subject_name_and_subgroup(schedule_id)
+            text = f"Черга відкрита для запису для предмету {subject} для підгрупи {subgroup} на завтра"
+            for user_id in user_ids:
+                try:
+                    await context.bot.send_message(chat_id=user_id, text=text)
+                except Exception as e:
+                    pass
+
+    except DatabaseException as e:
+        pass
+
 def main() -> None:
     # Creating database
     with Database(DB_NAME) as db:
@@ -235,7 +263,16 @@ def main() -> None:
             .token(TOKEN)
             .build()
         )
-    
+
+    # Schedule the daily job
+    time_to_run = datetime.time(hour=3, minute=0)
+
+    app.job_queue.run_daily(
+        check_tomorrows_schedules,
+        time=time_to_run,
+        name="daily_schedule_check"
+    )
+
     # Filter for admins
     admin_filter = filters.User(user_id=admin_ids)  
     registered_filter = IsRegisteredUserFilter()

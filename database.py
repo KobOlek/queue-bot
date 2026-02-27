@@ -166,3 +166,32 @@ class Database:
             query = """UPDATE Settings SET registration_enabled = ?"""
             self.execute(query, (1,))
             return 1
+
+    def get_schedules_for_date(self, target_date: str) -> list[int]:
+        """
+        Retrieves schedule IDs for a specific date.
+        target_date should be in 'YYYY-MM-DD' format.
+        """
+        query = "SELECT id FROM Schedules WHERE defense_date = ?"
+        results = self.fetch(query, (target_date,))
+
+        return [row[0] for row in results]
+
+    def update_active_queues(self, schedule_id: int) -> None:
+        if schedule_id:
+            query = """SELECT COUNT(*) FROM Active_Queues WHERE schedule_id = ?"""
+            res = self.fetch(query, (schedule_id,))
+            if res[0][0] != 0:
+                query = """UPDATE Active_Queues SET is_open = ? WHERE schedule_id = ?"""
+                self.execute(query, (1, schedule_id))
+            else:
+                query = """INSERT INTO Active_Queues (schedule_id, is_open) VALUES (?, ?)"""
+                self.execute(query, (schedule_id, 1))
+
+    def get_subject_name_and_subgroup(self, schedule_id: int) -> tuple[str, int]:
+        subject_query = """SELECT subject FROM Schedules WHERE schedule_id = ?"""
+        subject_res = self.fetch(subject_query, (schedule_id,))
+
+        subgroup_query = """SELECT subgroup FROM Schedules WHERE schedule_id = ?"""
+        subgroup_res = self.fetch(subgroup_query, (schedule_id,))
+        return subject_res[0][0], subgroup_res[0][0]
