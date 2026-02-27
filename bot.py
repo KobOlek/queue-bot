@@ -2,6 +2,8 @@ from telegram import Update, BotCommand, BotCommandScopeDefault, BotCommandScope
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 from telegram.ext.filters import MessageFilter
 
+import datetime
+
 from config import *
 from database import Database
 from exception import DatabaseException
@@ -223,6 +225,20 @@ async def toggle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text(text)
 
+async def auto_archive_job(context: ContextTypes.DEFAULT_TYPE):
+    """Фонова задача для щоденного архівування вчорашніх черг."""
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    try:
+        with Database(DB_NAME) as db:
+            archived_count = db.archive_past_queues(yesterday)
+            
+            if archived_count > 0:
+                print(f"🔄 Автоматично архівовано {archived_count} черг за {yesterday}.")
+                
+    except DatabaseException as e:
+        print(f"❌ Помилка авто-архівування: {e}")
+
 def main() -> None:
     # Creating database
     with Database(DB_NAME) as db:
@@ -236,6 +252,10 @@ def main() -> None:
             .build()
         )
     
+    # Bot-flow tasks
+    time_to_run = datetime.time(hour=3, minute=0)
+    app.job_queue.run_daily(auto_archive_job, time=time_to_run)
+
     # Filter for admins
     admin_filter = filters.User(user_id=admin_ids)  
     registered_filter = IsRegisteredUserFilter()
