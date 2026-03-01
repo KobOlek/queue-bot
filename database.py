@@ -102,6 +102,12 @@ class Database:
                 """
         self.execute(query, (schedule_id, user_id, lab_number, position))
 
+    def remove_user_from_queue(self, schedule_id: int, user_id: int, lab_number: int):
+        query = """
+                DELETE FROM Queues WHERE schedule_id = ? AND user_id = ? AND lab_number = ?
+                """
+        self.execute(query, (schedule_id, user_id, lab_number))
+
     def get_next_position(self, schedule_id: int) -> int:
         """Returns next free position in a queue"""
         query = "SELECT MAX(position) FROM Queues WHERE schedule_id = ?"
@@ -268,3 +274,12 @@ class Database:
         query = "SELECT 1 FROM Queues WHERE schedule_id = ? AND position = ?"
         result = self.fetch(query, (schedule_id, position))
         return bool(result)
+ 
+    def get_user_queues(self, user_id:int) -> list[tuple]:
+        query = """
+            SELECT s.id, s.subject, s.subgroup, s.defense_date, q.lab_number, q.position
+            FROM Schedules s
+            JOIN Queues q ON s.id = q.schedule_id
+            WHERE q.user_id = ?
+        """
+        return self.fetch(query, (user_id,))
