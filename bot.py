@@ -28,6 +28,7 @@ WAITING_FOR_NAME = 1
 SELECTING_QUEUE = 2
 TYPING_LAB_NUMBER = 3
 SELECTING_POSITION = 4
+SELECTING_QUEUE_FOR_LEAVING = 5
 
 # User and admin menus
 USER_COMMANDS = [
@@ -306,7 +307,66 @@ async def cancel_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def leave_the_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    user_id = update.effective_user.id
+    
+    try:
+        with Database(DB_NAME) as db:
+            user_queues = db.get_user_queues(user_id)
+    except DatabaseException:
+        await update.message.reply_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not user_queues:
+        await update.message.reply_text("Ви не зареєстровані в жодній черзі!")
+        return ConversationHandler.END
+    
+    keyboard = []
+
+    for q in user_queues:
+        # q[0]=id, q[1]=subject, q[2]=subgroup, q[3]=date, q[4]=lab_number, q[5]=position
+        btn_text = f"❌ {q[1]} ({q[2]}) - Лаба №{q[4]}, Поз: {q[5]}, {q[3]}"
+        btn_data = f"leave_{q[0]}_{q[4]}" 
+        
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_leave")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Ваші черги (натисніть, щоб покинути):",
+        reply_markup=reply_markup
+    )
+
+    return SELECTING_QUEUE_FOR_LEAVING
+
+async def queue_for_leaving_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split("_")
+    schedule_id = int(parts[1])
+    lab_number = int(parts[2])
+
+    user_id = update.effective_user.id
+
+    try:
+        with Database(DB_NAME) as db:
+            db.remove_user_from_queue(schedule_id, user_id, lab_number)
+    except DatabaseException:
+        await query.edit_message_text("❌ Помилка бази даних. Вас не видалено з черги. Спробуйте ще.")
+        return ConversationHandler.END
+    
+    await query.edit_message_text(f"✅ Вас успішно викреслено з черги (Лабораторна №{lab_number})!")
+    return ConversationHandler.END
+
+async def cancel_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text("Дію скасовано.")
+    else:
+        await update.message.reply_text("Дію скасовано.")
+    return ConversationHandler.END
 
 async def close_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
@@ -482,7 +542,18 @@ def main() -> None:
         allow_reentry=True
     )
     app.add_handler(queue_conv)
-    app.add_handler(CommandHandler("leave_the_queue", leave_the_queue, filters=registered_filter))
+    leave_queue_conv = ConversationHandler(
+        entry_points=[CommandHandler("leave_the_queue", leave_the_queue, filters=registered_filter)],
+        states={
+            SELECTING_QUEUE_FOR_LEAVING: [
+                CallbackQueryHandler(queue_for_leaving_selected, pattern="^leave_"),
+                CallbackQueryHandler(cancel_leave, pattern="^cancel_leave$")
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_leave)],
+        allow_reentry=True
+    )
+    app.add_handler(leave_queue_conv)
 
     # Admin-only commands
     app.add_handler(CommandHandler("close_queue", close_queue, filters=admin_filter & registered_filter))
