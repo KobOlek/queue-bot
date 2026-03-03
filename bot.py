@@ -29,6 +29,9 @@ SELECTING_QUEUE = 2
 TYPING_LAB_NUMBER = 3
 SELECTING_POSITION = 4
 SELECTING_QUEUE_FOR_LEAVING = 5
+SELECTING_QUEUE_TO_REMOVE_USER = 6
+SELECTING_USER_TO_REMOVE = 7
+SELECTING_QUEUE_TO_CLOSE = 8
 
 # User and admin menus
 USER_COMMANDS = [
@@ -84,6 +87,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     full_name = update.message.text
+    username = update.effective_user.username
+    if username:
+        user_link = f"@{username}"
+    else:
+        user_link = f"без юзернейму"
 
     context.bot_data[user_id] = {"name": full_name}
 
@@ -100,7 +108,7 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=admin_id, 
-                text=f"Нова заявка на реєстрацію!\nІм'я: {full_name}\nID: {user_id}",
+                text=f"Нова заявка на реєстрацію!\nІм'я: {full_name}\nUsername: {user_link}",
                 reply_markup=reply_markup
             )
         except Exception:
@@ -369,10 +377,150 @@ async def cancel_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def close_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    try:
+        with Database(DB_NAME) as db:
+            active_queues = db.get_current_active_queues()
+    except DatabaseException:
+        await update.message.reply_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not active_queues:
+        await update.message.reply_text("Зараз немає активних черг.")
+        return ConversationHandler.END
+
+    keyboard = []
+    for aq in active_queues:
+        btn_text = f"{aq[1]} ({aq[2]}) - {aq[3]}"
+        btn_data = f"close_q_{aq[0]}"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_close")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "Обери чергу, яку хочеш закрити:",
+        reply_markup=reply_markup
+    )
+    return SELECTING_QUEUE_TO_CLOSE
+
+async def queue_to_close_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    schedule_id = int(query.data.replace("close_q_", ""))
+
+    try:
+        with Database(DB_NAME) as db:
+            db.close_active_queue(schedule_id)
+    except DatabaseException:
+        await query.edit_message_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    await query.edit_message_text("✅ Чергу успішно закрито! (Користувачі більше не зможуть в неї записуватися)")
+    return ConversationHandler.END
+
+async def cancel_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text("Дію скасовано.")
+    else:
+        await update.message.reply_text("Дію скасовано.")
+    return ConversationHandler.END
 
 async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    try:
+        with Database(DB_NAME) as db:
+            active_queues = db.get_current_active_queues()
+    except DatabaseException:
+        await update.message.reply_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not active_queues:
+        await update.message.reply_text("Зараз немає активних черг.")
+        return ConversationHandler.END
+
+    keyboard = []
+    for aq in active_queues:
+        btn_text = f"{aq[1]} ({aq[2]}) - {aq[3]}"
+        btn_data = f"rm_q_{aq[0]}"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_rm")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Обери чергу, з якої хочеш видалити юзера:",
+        reply_markup=reply_markup
+    )
+    return SELECTING_QUEUE_TO_REMOVE_USER
+
+
+async def queue_to_remove_from_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    schedule_id = int(query.data.replace("rm_q_", ""))
+    context.user_data['rm_schedule_id'] = schedule_id
+
+    try:
+        with Database(DB_NAME) as db:
+            users_in_queue = db.get_queue_with_users(schedule_id)
+    except DatabaseException:
+        await query.edit_message_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not users_in_queue:
+        await query.edit_message_text("Ця черга наразі порожня.")
+        return ConversationHandler.END
+
+    keyboard = []
+    for u in users_in_queue:
+        # u[0]=user_id, u[1]=full_name, u[2]=position, u[3]=lab_number
+        btn_text = f"Поз: {u[2]} | {u[1]} | Лаба: {u[3]}"
+        btn_data = f"rm_usr_{u[0]}_{u[3]}"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_rm")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        "Обери користувача для видалення з черги:",
+        reply_markup=reply_markup
+    )
+    return SELECTING_USER_TO_REMOVE
+
+
+async def user_to_remove_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split('_')
+    user_id = int(parts[2])
+    lab_number = int(parts[3])
+    schedule_id = context.user_data.get('rm_schedule_id')
+
+    try:
+        with Database(DB_NAME) as db:
+            db.remove_user_from_queue(schedule_id, user_id, lab_number)
+    except DatabaseException:
+        await query.edit_message_text("❌ Помилка бази даних.")
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    context.user_data.clear()
+    await query.edit_message_text(f"✅ Користувача успішно видалено з черги (Лаба №{lab_number}).")
+    return ConversationHandler.END
+
+
+async def cancel_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text("Дію скасовано.")
+    else:
+        await update.message.reply_text("Дію скасовано.")
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def new_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
@@ -528,6 +676,7 @@ def main() -> None:
 
 
     app.add_handler(CommandHandler("show_table", show_table, filters=registered_filter))
+
     queue_conv = ConversationHandler(
         entry_points=[CommandHandler("get_in_queue", get_in_queue, filters=registered_filter)],
         states={
@@ -542,6 +691,7 @@ def main() -> None:
         allow_reentry=True
     )
     app.add_handler(queue_conv)
+
     leave_queue_conv = ConversationHandler(
         entry_points=[CommandHandler("leave_the_queue", leave_the_queue, filters=registered_filter)],
         states={
@@ -556,11 +706,42 @@ def main() -> None:
     app.add_handler(leave_queue_conv)
 
     # Admin-only commands
-    app.add_handler(CommandHandler("close_queue", close_queue, filters=admin_filter & registered_filter))
-    app.add_handler(CommandHandler("remove_user", remove_user, filters=admin_filter & registered_filter))
+    close_queue_conv = ConversationHandler(
+        entry_points=[CommandHandler("close_queue", close_queue, filters=admin_filter & registered_filter)],
+        states={
+            SELECTING_QUEUE_TO_CLOSE: [
+                CallbackQueryHandler(queue_to_close_selected, pattern="^close_q_"),
+                CallbackQueryHandler(cancel_close, pattern="^cancel_close$")
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_close)],
+        allow_reentry=True
+    )
+    app.add_handler(close_queue_conv)
+
+    remove_user_conv = ConversationHandler(
+        entry_points=[CommandHandler("remove_user", remove_user, filters=admin_filter & registered_filter)],
+        states={
+            SELECTING_QUEUE_TO_REMOVE_USER: [
+                CallbackQueryHandler(queue_to_remove_from_selected, pattern="^rm_q_"),
+                CallbackQueryHandler(cancel_remove, pattern="^cancel_rm$")
+            ],
+            SELECTING_USER_TO_REMOVE: [
+                CallbackQueryHandler(user_to_remove_selected, pattern="^rm_usr_"),
+                CallbackQueryHandler(cancel_remove, pattern="^cancel_rm$")
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_remove)],
+        allow_reentry=True
+    )
+    app.add_handler(remove_user_conv)
+
     app.add_handler(CommandHandler("new_queue", new_queue, filters=admin_filter & registered_filter))
+    
     app.add_handler(CommandHandler("reschedule", reschedule, filters=admin_filter & registered_filter))
+
     app.add_handler(CommandHandler("broadcast", broadcast, filters=admin_filter & registered_filter))
+
     app.add_handler(CommandHandler("toggle_registration", toggle_registration, filters=admin_filter & registered_filter))
 
     print("Bot is running...")

@@ -256,7 +256,7 @@ class Database:
         """
         return self.fetch(query)
     
-    def is_same_user_in_queue(self, user_id, schedule_id, lab_number) -> list[tuple]: # user with same lab_number in the exact queue
+    def is_same_user_in_queue(self, user_id, schedule_id, lab_number): # user with same lab_number in the exact queue
         query = """
             SELECT COUNT(*) 
             FROM Queues 
@@ -283,3 +283,17 @@ class Database:
             WHERE q.user_id = ?
         """
         return self.fetch(query, (user_id,))
+    
+    def get_queue_with_users(self, schedule_id: int) -> list[tuple]:
+        query = """
+            SELECT q.user_id, u.full_name, q.position, q.lab_number
+            FROM Queues q
+            JOIN Users u ON q.user_id = u.user_id
+            WHERE q.schedule_id = ?
+            ORDER BY q.position ASC
+        """
+        return self.fetch(query, (schedule_id,))
+    
+    def close_active_queue(self, schedule_id:int):
+        query = "UPDATE Active_Queues SET is_open = 0 WHERE schedule_id = ?"
+        self.execute(query, (schedule_id,))
