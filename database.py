@@ -297,3 +297,10 @@ class Database:
     def close_active_queue(self, schedule_id:int):
         query = "UPDATE Active_Queues SET is_open = 0 WHERE schedule_id = ?"
         self.execute(query, (schedule_id,))
+
+    def reschedule_queue(self, schedule_id: int, new_date: str):
+        parsed_date = datetime.strptime(new_date, "%d.%m.%y")
+        formatted_date = parsed_date.strftime("%Y-%m-%d")
+
+        query = "UPDATE Schedules SET defense_date = ? WHERE id = ?"
+        self.execute(query, (formatted_date, schedule_id))
