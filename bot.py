@@ -523,10 +523,77 @@ async def cancel_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def new_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    if not context.args:
+        await update.message.reply_text(
+            "Введіть дані для нової черги через вертикальну риску '|'.\n\n"
+            "*Формат:* `/new_queue Предмет | Підгрупа | ДД.ММ.РР`\n"
+            "*Приклад:* `/new_queue ТІМС | 1 | 25.10.24`",
+            parse_mode="Markdown"  # Використовуємо Markdown для красивого форматування тексту
+        )
+        return
+
+    raw_text = " ".join(context.args)
+    parts = [part.strip() for part in raw_text.split(" ")]
+
+    if len(parts) != 3:
+        await update.message.reply_text(
+            "❌ Неправильний формат! Переконайтеся, що ви ввели рівно три параметри, розділені `|`."
+        )
+        return
+
+    subject, subgroup, defense_date = parts
+
+    try:
+        with Database(DB_NAME) as db:
+            db.insert_defense_dates(subject, subgroup, defense_date)
+
+        await update.message.reply_text(
+            f"Новий розклад успішно створено!\n\n"
+            f"Предмет: {subject}\n"
+            f"Підгрупа: {subgroup}\n"
+            f"Дата: {defense_date}"
+        )
+
+    except ValueError:
+        # Ця помилка виникне, якщо datetime.strptime не зможе розпізнати дату
+        await update.message.reply_text(
+            "❌ Помилка: неправильний формат дати. Використовуйте ДД.ММ.РР (наприклад, 25.10.24)."
+        )
+    except DatabaseException as e:
+        await update.message.reply_text(f"❌ Помилка бази даних: {e.message}")
 
 async def reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "❌ Неправильний формат.\n\n"
+            "*Використання:* `/reschedule <ID_розкладу> <Нова_дата>`\n"
+            "*Приклад:* `/reschedule 3 25.10.24`",
+            parse_mode="Markdown"
+        )
+        return
+
+    schedule_id_str, new_date = context.args
+
+    if not schedule_id_str.isdigit():
+        await update.message.reply_text("❌ ID розкладу має бути числом.")
+        return
+
+    schedule_id = int(schedule_id_str)
+
+    try:
+        with Database(DB_NAME) as db:
+            db.reschedule_queue(schedule_id, new_date)
+
+        await update.message.reply_text(
+            f"✅ Дату для розкладу #{schedule_id} успішно змінено на {new_date}."
+        )
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Помилка: неправильний формат дати. Використовуйте ДД.ММ.РР (наприклад, 25.10.24)."
+        )
+    except DatabaseException as e:
+        await update.message.reply_text(f"❌ Помилка бази даних: {e.message}")
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
