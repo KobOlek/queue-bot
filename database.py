@@ -304,3 +304,16 @@ class Database:
 
         query = "UPDATE Schedules SET defense_date = ? WHERE id = ?"
         self.execute(query, (formatted_date, schedule_id))
+
+    def get_schedule_info(self, schedule_id: int):
+        query = "SELECT subject, subgroup, defense_date FROM Schedules WHERE id = ?"
+        result = self.fetch(query, (schedule_id,))
+
+        if result:
+            subject, subgroup, date_str = result[0]
+            # Змінюємо формат дати з бази (РРРР-ММ-ДД) на звичний (ДД.ММ.РРРР)
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            formatted_date = date_obj.strftime("%d.%m.%Y")
+            return subject, subgroup, formatted_date
+
+        return None
