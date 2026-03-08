@@ -174,7 +174,7 @@ async def show_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not active_queues:
-        await update.message.reply_text("📭 Зараз немає активних черг.")
+        await update.message.reply_text("Зараз немає активних черг.")
         return ConversationHandler.END
 
     keyboard = []
@@ -813,7 +813,18 @@ def main() -> None:
     app.add_handler(registration_conv)
     app.add_handler(CallbackQueryHandler(admin_registration_decision, pattern="^(approve|reject)_"))
 
-
+    show_table_conv = ConversationHandler(
+        entry_points=[CommandHandler("show_table", show_table, filters=registered_filter)],
+        states={
+            SELECTING_QUEUE_TO_SHOW: [
+                CallbackQueryHandler(queue_to_show_selected, pattern="^show_q_"),
+                CallbackQueryHandler(cancel_show, pattern="^cancel_show$")
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_show)],
+        allow_reentry=True
+    )
+    app.add_handler(show_table_conv)
     app.add_handler(CommandHandler("show_table", show_table, filters=registered_filter))
 
     queue_conv = ConversationHandler(
