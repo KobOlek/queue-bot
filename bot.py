@@ -57,7 +57,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Command menu for admins
     if user_id in admin_ids:
         await context.bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=user_id))
-        await update.message.reply_text("Привіт адміне!")
+        await update.message.reply_text("Привіт адміне!💫")
         return ConversationHandler.END
 
     try:
@@ -65,23 +65,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Check if registration is enabled
             is_registration_open = db.is_registration_enabled()
             if not is_registration_open:
-                await update.message.reply_text("Наразі реєстрація нових користувачів закрита.")
+                await update.message.reply_text("⚠️Наразі реєстрація нових користувачів закрита‼️")
                 return ConversationHandler.END
 
             # Check if user is not already registred
             is_registered = db.is_user_registered(user_id)
             if is_registered:
-                await update.message.reply_text("Ти вже зареєстрований! Обирай що робимо далі!")
+                await update.message.reply_text("Ти вже зареєстрований‼️ Обирай що робимо далі!💫")
                 return ConversationHandler.END
     except DatabaseException:
-        await update.message.reply_text("Помилка реєстрації.")
+        await update.message.reply_text("⚠️Помилка реєстрації.")
         return ConversationHandler.END
 
     if user_id in context.bot_data:
-        await update.message.reply_text("Твоя заявка вже розглядається адміністратором. Будь ласка, зачекай.")
+        await update.message.reply_text("Твоя заявка вже розглядається адміністратором💫. Будь ласка, зачекай.")
         return ConversationHandler.END
     
-    await update.message.reply_text("Привіт! Для реєстрації введи своє ім'я та прізвище:")
+    await update.message.reply_text("Привіт💫! Для реєстрації введи своє ім'я та прізвище:")
     return WAITING_FOR_NAME
 
 # Receiving name after registration (/start command)
@@ -109,19 +109,19 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=admin_id, 
-                text=f"Нова заявка на реєстрацію!\nІм'я: {full_name}\nUsername: {user_link}",
+                text=f"Нова заявка на реєстрацію💫!\nІм'я: {full_name}\nUsername: {user_link}",
                 reply_markup=reply_markup
             )
         except Exception:
             pass
 
     # Response for user
-    await update.message.reply_text("Твої дані відправлено на перевірку адміністратору. Очікуй!")
+    await update.message.reply_text("Твої дані відправлено на перевірку адміністратору💫. Очікуй!")
     return ConversationHandler.END
 
 
 async def cancel_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Реєстрацію скасовано.")
+    await update.message.reply_text("⚠️Реєстрацію скасовано.")
     return ConversationHandler.END
 
 # Processing admin registration decision
@@ -129,7 +129,7 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
 
     if update.effective_user.id not in admin_ids:
-        await query.answer("У вас немає прав!", show_alert=True)
+        await query.answer("У вас немає прав‼️", show_alert=True)
         return
     
     await query.answer()
@@ -154,7 +154,7 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
 
         await context.bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeChat(chat_id=target_user_id))
         
-        await context.bot.send_message(chat_id=target_user_id, text="Твою заявку схвалено! Меню оновлено, можеш користуватися ботом.")
+        await context.bot.send_message(chat_id=target_user_id, text="Твою заявку схвалено❤️💫! Меню оновлено, можеш користуватися ботом.")
         await query.edit_message_text(f"✅ Користувача {target_user_id} прийнято.", reply_markup=None)
         
     elif action == "reject":
@@ -174,7 +174,7 @@ async def show_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not active_queues:
-        await update.message.reply_text("Зараз немає активних черг.")
+        await update.message.reply_text("⚠️Зараз немає активних черг.")
         return ConversationHandler.END
 
     keyboard = []
@@ -255,7 +255,7 @@ async def get_in_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not active_queues:
-        await update.message.reply_text("Зараз немає активних черг.")
+        await update.message.reply_text("⚠️Зараз немає активних черг.")
         return ConversationHandler.END
 
     keyboard = []
@@ -299,7 +299,7 @@ async def receive_lab_number(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lab_text = update.message.text
 
     if not lab_text.isdigit():
-        await update.message.reply_text("Будь ласка, введи коректний номер (тільки цифру):")
+        await update.message.reply_text("‼️Будь ласка, введи коректний номер (тільки цифру):")
         return TYPING_LAB_NUMBER
     
     lab_number = int(lab_text)
@@ -347,7 +347,7 @@ async def position_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
     if query.data == "taken_pos":
-        await query.answer("Це місце вже зайняте! Обери інше.", show_alert=True)
+        await query.answer("‼️Це місце вже зайняте! Обери інше.", show_alert=True)
         return SELECTING_POSITION
         
     if query.data == "cancel_queue":
@@ -367,7 +367,7 @@ async def position_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with Database(DB_NAME) as db:
             if db.is_position_taken(schedule_id, position):
-                await query.edit_message_text("Ой! Хтось встиг зайняти це місце швидше за тебе. Спробуй /get_in_queue ще раз.")
+                await query.edit_message_text("⚠️Ой! Хтось встиг зайняти це місце швидше за тебе. Спробуй /get_in_queue ще раз.")
                 context.user_data.clear()
                 return ConversationHandler.END
 
@@ -400,7 +400,7 @@ async def leave_the_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not user_queues:
-        await update.message.reply_text("Ви не зареєстровані в жодній черзі!")
+        await update.message.reply_text("⚠️Ви не зареєстровані в жодній черзі!")
         return ConversationHandler.END
     
     keyboard = []
@@ -439,7 +439,7 @@ async def queue_for_leaving_selected(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text("❌ Помилка бази даних. Вас не видалено з черги. Спробуйте ще.")
         return ConversationHandler.END
     
-    await query.edit_message_text(f"✅ Вас успішно викреслено з черги (Лабораторна №{lab_number})!")
+    await query.edit_message_text(f"✅ Вас успішно викреслено з черги (Лабораторна №{lab_number})! \n⚠️Але не грайтеся з цим, а то попадете в кінець черги💫‼️")
     return ConversationHandler.END
 
 async def cancel_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -460,7 +460,7 @@ async def close_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not active_queues:
-        await update.message.reply_text("Зараз немає активних черг.")
+        await update.message.reply_text("⚠️Зараз немає активних черг.")
         return ConversationHandler.END
 
     keyboard = []
@@ -511,7 +511,7 @@ async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not active_queues:
-        await update.message.reply_text("Зараз немає активних черг.")
+        await update.message.reply_text("⚠️Зараз немає активних черг.")
         return ConversationHandler.END
 
     keyboard = []
@@ -544,7 +544,7 @@ async def queue_to_remove_from_selected(update: Update, context: ContextTypes.DE
         return ConversationHandler.END
 
     if not users_in_queue:
-        await query.edit_message_text("Ця черга наразі порожня.")
+        await query.edit_message_text("‼️Ця черга наразі порожня.")
         return ConversationHandler.END
 
     keyboard = []
@@ -670,7 +670,7 @@ async def reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "Будь ласка, вкажіть текст для розсилки."
+            "‼️Будь ласка, вкажіть текст для розсилки."
         )
         return
 
@@ -683,11 +683,11 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with Database(DB_NAME) as db:
             user_ids = db.get_user_ids()
     except DatabaseException:
-        await update.message.reply_text("Помилка з отриманням ID користувачів.")
+        await update.message.reply_text("‼️Помилка з отриманням ID користувачів.")
         return
 
     if not user_ids:
-        await update.message.reply_text("У базі немає користувачів для розсилки.")
+        await update.message.reply_text("⚠️У базі немає користувачів для розсилки.")
         return
 
     for user_id in user_ids:
@@ -695,7 +695,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=user_id, text=text)
             success_count += 1
         except Exception as e:
-            print(f"Помилка відправки користувачу {user_id}: {e}")
+            print(f"⚠️Помилка відправки користувачу {user_id}: {e}")
             error_count += 1
 
     await update.message.reply_text(
@@ -710,12 +710,12 @@ async def toggle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
             result = db.toggle_registration()
             match result:
                 case 0:
-                    text = "Реєстрацію вимкнено!"
+                    text = "Реєстрацію вимкнено💫!"
                 case 1:
-                    text = "Реєстрацію увімкнено!"
+                    text = "Реєстрацію увімкнено💫!"
 
     except DatabaseException as e:
-        text = "Помилка з базою даних"
+        text = "⚠️Помилка з базою даних"
 
     await update.message.reply_text(text)
 
@@ -756,7 +756,7 @@ async def check_tomorrows_schedules(context: ContextTypes.DEFAULT_TYPE):
                 messages_to_send.append(text)
 
     except DatabaseException as e:
-        print(f"Помилка БД при перевірці черг на завтра: {e}")
+        print(f"⚠️Помилка БД при перевірці черг на завтра: {e}")
         return
 
     if user_ids and messages_to_send:
@@ -825,7 +825,6 @@ def main() -> None:
         allow_reentry=True
     )
     app.add_handler(show_table_conv)
-    app.add_handler(CommandHandler("show_table", show_table, filters=registered_filter))
 
     queue_conv = ConversationHandler(
         entry_points=[CommandHandler("get_in_queue", get_in_queue, filters=registered_filter)],
