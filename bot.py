@@ -32,6 +32,7 @@ SELECTING_QUEUE_FOR_LEAVING = 5
 SELECTING_QUEUE_TO_REMOVE_USER = 6
 SELECTING_USER_TO_REMOVE = 7
 SELECTING_QUEUE_TO_CLOSE = 8
+SELECTING_QUEUE_TO_SHOW = 9
 
 # User and admin menus
 USER_COMMANDS = [
@@ -165,7 +166,82 @@ async def admin_registration_decision(update: Update, context: ContextTypes.DEFA
             
         
 async def show_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    try:
+        with Database(DB_NAME) as db:
+            active_queues = db.get_current_active_queues()
+    except DatabaseException:
+        await update.message.reply_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not active_queues:
+        await update.message.reply_text("📭 Зараз немає активних черг.")
+        return ConversationHandler.END
+
+    keyboard = []
+    for aq in active_queues:
+        # aq[0]=id, aq[1]=subject, aq[2]=subgroup, aq[3]=date
+        btn_text = f"{aq[1]} (Підгрупа: {aq[2]}) - {aq[3]}"
+        btn_data = f"show_q_{aq[0]}"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Скасувати", callback_data="cancel_show")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Обери чергу для перегляду:",
+        reply_markup=reply_markup
+    )
+    return SELECTING_QUEUE_TO_SHOW
+
+async def queue_to_show_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    schedule_id = int(query.data.replace("show_q_", ""))
+
+    try:
+        with Database(DB_NAME) as db:
+            schedule_info = db.get_schedule_info(schedule_id)
+            queue_data = db.get_queue_for_schedule(schedule_id)
+    except DatabaseException:
+        await query.edit_message_text("❌ Помилка бази даних.")
+        return ConversationHandler.END
+
+    if not schedule_info:
+        await query.edit_message_text("❌ Розклад не знайдено.")
+        return ConversationHandler.END
+
+    subject, subgroup, defense_date = schedule_info
+
+    text = (
+        f"📚 *{subject}*\n"
+        f"👥 Підгрупа {subgroup}\n"
+        f"📅 Дата захисту: {defense_date}\n\n"
+        f"Поточна черга:\n"
+    )
+
+    if not queue_data:
+        text += "📭 Черга порожня.\n"
+        total_students = 0
+    else:
+        for item in queue_data:
+            pos, name, lab = item
+            text += f"{pos}. {name} - Лаба {lab}\n"
+        total_students = len(queue_data)
+
+    text += f"\n📊 Всього у черзі студентів: {total_students}"
+
+    await query.edit_message_text(text, parse_mode="Markdown")
+    return ConversationHandler.END
+
+async def cancel_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text("Дію скасовано.")
+    else:
+        await update.message.reply_text("Дію скасовано.")
+    return ConversationHandler.END
 
 async def get_in_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -266,7 +342,6 @@ async def receive_lab_number(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=reply_markup
     )
     return SELECTING_POSITION
-
 
 async def position_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -454,7 +529,6 @@ async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return SELECTING_QUEUE_TO_REMOVE_USER
 
-
 async def queue_to_remove_from_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -489,7 +563,6 @@ async def queue_to_remove_from_selected(update: Update, context: ContextTypes.DE
     )
     return SELECTING_USER_TO_REMOVE
 
-
 async def user_to_remove_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -510,7 +583,6 @@ async def user_to_remove_selected(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     await query.edit_message_text(f"✅ Користувача успішно видалено з черги (Лаба №{lab_number}).")
     return ConversationHandler.END
-
 
 async def cancel_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -533,7 +605,7 @@ async def new_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     raw_text = " ".join(context.args)
-    parts = [part.strip() for part in raw_text.split(" ")]
+    parts = [part.strip() for part in raw_text.split("|")]
 
     if len(parts) != 3:
         await update.message.reply_text(
